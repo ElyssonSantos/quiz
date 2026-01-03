@@ -53,37 +53,11 @@
     <script type="text/babel" data-type="module">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        // --- FIREBASE IMPORTS (ESM via CDN) ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
         // --- DADOS E CONSTANTES ---
-        const EXTERNAL_CHECKOUT_URL = "https://www.acessoreservado.com.br/resultado.html"; 
+        const EXTERNAL_CHECKOUT_URL = "https://www.abacatepay.com/pay/bill_C4sdK1RwcGPSZDmpjU2t5Hxn"; 
         
         // --- CHAVE DA API GEMINI (Substituída em tempo de execução) ---
         const apiKey = ""; 
-
-        // Configuração do Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyDkCxlbtRHgFXao7bwKgGrk_CQp7MBjXTU",
-            authDomain: "reset-do-cortisol.firebaseapp.com",
-            projectId: "reset-do-cortisol",
-            storageBucket: "reset-do-cortisol.firebasestorage.app",
-            messagingSenderId: "943853141596",
-            appId: "1:943853141596:web:73c0d064e79f7307793099"
-        };
-
-        // Inicialização Segura do Firebase
-        let app, auth, db;
-        try {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-        } catch (e) {
-            console.error("Erro ao inicializar Firebase", e);
-        }
-        const appId = 'cortisol-detox-app';
 
         // --- FLUXO DO QUIZ ---
         const INITIAL_FLOW = [
