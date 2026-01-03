@@ -1,0 +1,1221 @@
+<!DOCTYPE html><html lang="pt-BR"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reset do Cortisol - Plano Personalizado</title>
+    
+    <!-- Meta Pixel Code -->
+    <script async="" src="js/fbevents.js"></script><script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1958693388409473');
+    fbq('track', 'PageView');
+    </script>
+    <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=1958693388409473&ev=PageView&noscript=1"
+    /></noscript>
+    <!-- End Meta Pixel Code -->
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin="" src="js/react.production.min.js"></script>
+    <script crossorigin="" src="js/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="js/babel.min.js"></script>
+
+    <!-- Fonte -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out; }
+        .animate-bounce { animation: bounce 2s infinite; }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes bounce { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased selection:bg-green-100 selection:text-green-900">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- FIREBASE IMPORTS (ESM via CDN) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- DADOS E CONSTANTES ---
+        const EXTERNAL_CHECKOUT_URL = "https://www.acessoreservado.com.br/resultado.html"; 
+        
+        // --- CHAVE DA API GEMINI (Substituída em tempo de execução) ---
+        const apiKey = ""; 
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDkCxlbtRHgFXao7bwKgGrk_CQp7MBjXTU",
+            authDomain: "reset-do-cortisol.firebaseapp.com",
+            projectId: "reset-do-cortisol",
+            storageBucket: "reset-do-cortisol.firebasestorage.app",
+            messagingSenderId: "943853141596",
+            appId: "1:943853141596:web:73c0d064e79f7307793099"
+        };
+
+        // Inicialização Segura do Firebase
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Erro ao inicializar Firebase", e);
+        }
+        const appId = 'cortisol-detox-app';
+
+        // --- FLUXO DO QUIZ ---
+        const INITIAL_FLOW = [
+            { 
+                id: 0, 
+                type: 'intro', 
+                trackingId: 'start_quiz',
+                subtitle: 'Descubra como o "Reset do Cortisol" pode ajudar você a perder peso sem dietas malucas.',
+                bullets: ['Análise Metabólica Gratuita', 'Plano 100% Personalizado', 'Baseado em Ciência'],
+                buttonText: 'FAZER MEU RESET AGORA' 
+            },
+            { 
+                id: 1, 
+                type: 'select', 
+                question: 'Escolha seu gênero', 
+                key: 'gender',
+                trackingId: 'answered_gender',
+                options: [
+                    { label: 'Feminino', value: 'female' }, 
+                    { label: 'Masculino', value: 'male' }
+                ] 
+            },
+            { 
+                id: 2, 
+                type: 'select', 
+                question: 'Qual é o seu objetivo de perda de peso?', 
+                key: 'goal',
+                trackingId: 'answered_goal',
+                options: [
+                    { label: 'Perder de 1 a 10kg de vez', value: 'lose_1_10' },
+                    { label: 'Perder de 11 a 20kg de vez', value: 'lose_11_20' },
+                    { label: 'Perder mais de 20kg de vez', value: 'lose_20_plus' },
+                    { label: 'Manter o peso e ficar em forma', value: 'maintain' },
+                    { label: 'Ainda não decidi', value: 'undecided' }
+                ] 
+            },
+            { id: 3, type: 'input', subtype: 'number', question: 'Quantos anos você tem?', placeholder: 'Anos', key: 'age', trackingId: 'answered_age' },
+            // ETAPAS SEPARADAS DE MEDIDAS
+            { id: 4.1, type: 'input', subtype: 'number', question: 'Qual a sua altura?', placeholder: 'Em cm (ex: 160)', key: 'height', trackingId: 'answered_height' },
+            { id: 4.2, type: 'input', subtype: 'number', question: 'Qual o seu peso atual?', placeholder: 'Em kg (ex: 70)', key: 'currentWeight', trackingId: 'answered_weight' },
+            
+            { id: 5, type: 'info_result', trackingId: 'viewed_imc_risk', title: 'Riscos de IMC pouco saudável', content: 'graph_imc' },
+            { id: 6, type: 'complex_goal', trackingId: 'answered_goal_weight', question: 'Qual é seu peso ideal?', key: 'goalWeight' },
+            { 
+                id: 6.1, 
+                type: 'interstitial',
+                trackingId: 'viewed_goal_success', 
+                title: 'Legal!', 
+                text: 'Você acabou de estabelecer sua primeira meta! Você sempre pode mudar esse objetivo depois.',
+                buttonText: 'Continuar'
+            },
+            { 
+                id: 7, 
+                type: 'select', 
+                question: 'Como é sua semana típica?', 
+                key: 'activity',
+                trackingId: 'answered_activity',
+                options: [
+                    { label: 'Não ativo', value: 'sedentary', desc: 'Passo a maior parte do dia sentado (escritório, casa).' },
+                    { label: 'Levemente ativo', value: 'light', desc: 'Caminhadas ocasionais, tarefas domésticas leves.' },
+                    { label: 'Moderadamente ativo', value: 'moderate', desc: 'Exercícios regulares 1-3x por semana.' },
+                    { label: 'Ativo', value: 'active', desc: 'Treinos intensos ou trabalho físico diário.' }
+                ]
+            },
+            { id: 7.1, type: 'profile_summary', trackingId: 'viewed_profile_summary', title: 'Seu perfil pessoal' },
+            { 
+                id: 8, 
+                type: 'select', 
+                question: 'Familiaridade com reset de cortisol?', 
+                key: 'familiarity',
+                trackingId: 'answered_familiarity',
+                options: [
+                    { label: 'Não conhecia', value: 'unknown' },
+                    { label: 'Iniciante', value: 'beginner' },
+                    { label: 'Conhecimento básico', value: 'intermediate' },
+                    { label: 'Bastante experiente', value: 'advanced' }
+                ]
+            },
+            { id: 9, type: 'info', trackingId: 'viewed_protocol_explainer', title: 'Muito mais que uma dieta', text: 'O Reset de Cortisol é um protocolo clínico de modulação neuroendócrina. O foco não é apenas cortar calorias, mas regular o Eixo HPA para destravar a queima de gordura visceral.' },
+            { id: 10, type: 'testimonial', trackingId: 'viewed_testimonial_1', name: 'Renata', location: 'São Paulo, SP', text: 'Depois de ter 3 filhos... comecei minha jornada. Minha maior conquista não é só a perda de 25 kg, mas ser uma mãe feliz!', image: '👩' },
+            { 
+                id: 11, 
+                type: 'select', 
+                question: 'Onde você mora?', 
+                key: 'location',
+                trackingId: 'answered_location',
+                options: [
+                    { label: 'O campo', value: 'rural' },
+                    { label: 'Uma grande cidade', value: 'city' },
+                    { label: 'Os subúrbios', value: 'suburbs' }
+                ]
+            },
+            { 
+                id: 12, 
+                type: 'select', 
+                question: 'Já perdeu peso e recuperou?', 
+                key: 'yo_yo',
+                trackingId: 'answered_yoyo',
+                options: [
+                    { label: 'Sim', value: 'yes' },
+                    { label: 'Não', value: 'no' }
+                ]
+            },
+            { id: 13, type: 'info', trackingId: 'viewed_difference_explainer', title: 'O Reset do Cortisol é diferente!', text: 'A grande maioria perde peso mas recupera. O Reset do Cortisol ajuda a manter o progresso, focando na causa hormonal.' },
+            { 
+                id: 14, 
+                type: 'info', 
+                trackingId: 'viewed_calculation_screen', 
+                title: 'Calculando plano pessoal...', 
+                text: 'Já ajudamos 10.450 mulheres a perder mais de 8kg.',
+                image: 'prova1.png' 
+            },
+            { id: 15, type: 'input', subtype: 'text', question: 'Qual é o seu nome?', placeholder: 'Seu nome', key: 'name', trackingId: 'answered_name' },
+            { id: 16, type: 'prediction_v1', trackingId: 'viewed_prediction_chart', title: 'Previsão Inicial' },
+            { id: 17, type: 'info', trackingId: 'viewed_halfway_msg', title: 'Já estamos na metade!', text: 'Criamos um plano básico. Agora vamos personalizar cada detalhe.' },
+            { 
+                id: 18, 
+                type: 'select', 
+                question: 'Última vez no peso ideal?', 
+                key: 'last_ideal',
+                trackingId: 'answered_last_ideal',
+                options: [
+                    { label: 'Menos de 1 ano', value: '<1_year' },
+                    { label: '1 a 2 anos', value: '1-2_years' },
+                    { label: 'Mais de 3 anos', value: '>3_years' },
+                    { label: 'Nunca', value: 'never' }
+                ]
+            },
+            { id: 19, type: 'input', subtype: 'text', question: 'Número de roupa atual?', placeholder: 'Ex: 42 ou M', key: 'clothing_current', trackingId: 'answered_clothing_current' },
+            { id: 20, type: 'input', subtype: 'text', question: 'Tamanho de roupa desejado?', placeholder: 'Ex: 38 ou P', key: 'clothing_goal', trackingId: 'answered_clothing_goal' },
+            { id: 21, type: 'testimonial', trackingId: 'viewed_testimonial_2', name: 'Nicole', location: 'Rio de Janeiro, RJ', text: 'A dieta me ajudou a diminuir um tamanho de roupa e entrar no meu jeans antigo!', image: '💃', highlight: '80% reduzem um tamanho em 3 meses' },
+            { 
+                id: 22, 
+                type: 'select', 
+                question: 'Seus hábitos alimentares?', 
+                key: 'habits',
+                trackingId: 'answered_habits',
+                options: [
+                    { label: 'Como a mesma comida todo dia', value: 'routine', desc: 'Gosto de rotina e praticidade.' },
+                    { label: 'Gosto de variar o cardápio', value: 'varied_routine', desc: 'Prefiro novos sabores para não enjoar.' },
+                    { label: 'Como pratos variados do dia a dia', value: 'flexible', desc: 'Comida caseira simples e variada.' },
+                    { label: 'Gosto de experimentar', value: 'adventurous', desc: 'Amo testar receitas novas.' }
+                ]
+            },
+            { 
+                id: 23, 
+                type: 'select', 
+                question: 'Habilidades culinárias?', 
+                key: 'cooking',
+                trackingId: 'answered_cooking',
+                options: [
+                    { label: 'Cozinheiro experiente', value: 'expert' },
+                    { label: 'Estou aprendendo', value: 'learning' },
+                    { label: 'Não sei cozinhar nada', value: 'beginner' }
+                ]
+            },
+            { 
+                id: 24, 
+                type: 'info', 
+                trackingId: 'viewed_delicious_info', 
+                title: 'Nutrição que Cura', 
+                text: 'Esqueça a fome. Nossas receitas focam em "Elixires Matinais" anti-inflamatórios e jantares ricos em triptofano para melhorar seu sono e reduzir a ansiedade naturalmente.' 
+            },
+            { 
+                id: 25, 
+                type: 'multiselect', 
+                question: 'Preferências alimentares (Escolha 5)', 
+                key: 'pref_foods',
+                trackingId: 'answered_pref_foods',
+                options: [
+                    { label: 'Vegetais', value: 'veggies' },
+                    { label: 'Frutas', value: 'fruits' },
+                    { label: 'Ovos', value: 'eggs' },
+                    { label: 'Peixe', value: 'fish' },
+                    { label: 'Frango', value: 'chicken' },
+                    { label: 'Carne', value: 'meat' },
+                    { label: 'Nozes', value: 'nuts' },
+                    { label: 'Laticínios', value: 'dairy' }
+                ]
+            },
+            { 
+                id: 26, 
+                type: 'select', 
+                question: 'Qual carne você prefere?', 
+                key: 'meat',
+                trackingId: 'answered_meat_pref',
+                options: [
+                    { label: 'Carne Bovina', value: 'beef' },
+                    { label: 'Frango', value: 'chicken' },
+                    { label: 'Peixe', value: 'fish' },
+                    { label: 'Porco', value: 'pork' },
+                    { label: 'Nenhuma (Vegetariano)', value: 'none' }
+                ]
+            },
+            { 
+                id: 27, 
+                type: 'select', 
+                question: 'Alergias ou intolerâncias?', 
+                key: 'allergies',
+                trackingId: 'answered_allergies',
+                options: [
+                    { label: 'Nenhuma', value: 'none' },
+                    { label: 'Glúten', value: 'gluten' },
+                    { label: 'Lactose', value: 'lactose' },
+                    { label: 'Nozes', value: 'nuts' },
+                    { label: 'Frutos do mar', value: 'seafood' }
+                ]
+            },
+            { 
+                id: 28, 
+                type: 'select', 
+                question: 'Copos de água por dia?', 
+                key: 'water',
+                trackingId: 'answered_water',
+                options: [
+                    { label: 'Menos de 2', value: '<2' },
+                    { label: '2 a 4', value: '2-4' },
+                    { label: '5 a 7', value: '5-7' },
+                    { label: 'Mais de 8', value: '>8' }
+                ]
+            },
+            { 
+                id: 29, 
+                type: 'select', 
+                question: 'Difícil ser saudável no fim de semana?', 
+                key: 'weekend_struggle',
+                trackingId: 'answered_weekend',
+                options: [
+                    { label: 'Sim', value: 'yes' },
+                    { label: 'Não', value: 'no' },
+                    { label: 'Às vezes', value: 'sometimes' }
+                ]
+            },
+            { 
+                id: 30, 
+                type: 'select', 
+                question: 'Refeições no mesmo horário?', 
+                key: 'meal_timing',
+                trackingId: 'answered_meal_timing',
+                options: [
+                    { label: 'Sim', value: 'yes' },
+                    { label: 'Não', value: 'no' },
+                    { label: 'Tento, mas falho', value: 'try' }
+                ]
+            },
+            { 
+                id: 31, 
+                type: 'select', 
+                question: 'Qualidade do sono?', 
+                key: 'sleep',
+                trackingId: 'answered_sleep',
+                options: [
+                    { label: 'Excelente', value: 'excellent' },
+                    { label: 'Boa', value: 'good' },
+                    { label: 'Regular', value: 'fair' },
+                    { label: 'Ruim', value: 'poor' }
+                ]
+            },
+            { 
+                id: 32, 
+                type: 'select', 
+                question: 'Rotina de trabalho?', 
+                key: 'work_routine',
+                trackingId: 'answered_work_routine',
+                options: [
+                    { label: 'Horário comercial fixo', value: '9to5' },
+                    { label: 'Turnos', value: 'shifts' },
+                    { label: 'Freelancer/Flexível', value: 'flex' },
+                    { label: 'Estudante/Casa', value: 'home' }
+                ]
+            },
+            { id: 33, type: 'prediction_v2', trackingId: 'viewed_detailed_prediction', title: 'Previsão Detalhada' },
+            { id: 34, type: 'input', subtype: 'email', question: 'Para onde enviar seu plano?', placeholder: 'Seu melhor e-mail', key: 'email', trackingId: 'answered_email' },
+            { id: 36, type: 'info', trackingId: 'viewed_almost_done', title: 'Quase terminando', text: 'Estamos quase terminando de personalizar seu plano.' },
+            { id: 37, type: 'info', trackingId: 'viewed_health_intro', title: 'Condições de Saúde', text: 'Conte-nos mais para personalizar ainda mais.' },
+            { 
+                id: 38, 
+                type: 'select', 
+                question: 'Toma algum medicamento?', 
+                key: 'meds',
+                trackingId: 'answered_meds',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { 
+                id: 39, 
+                type: 'select', 
+                question: 'Restrição alimentar médica?', 
+                key: 'med_diet',
+                trackingId: 'answered_med_diet',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { 
+                id: 40, 
+                type: 'multiselect', 
+                question: 'Risco de sintomas?', 
+                key: 'symptoms',
+                trackingId: 'answered_symptoms',
+                options: [
+                    { label: 'Depressão', value: 'depression' },
+                    { label: 'Diabetes', value: 'diabetes' },
+                    { label: 'Colesterol Alto', value: 'cholesterol' },
+                    { label: 'Nenhum', value: 'none' }
+                ]
+            },
+            { id: 41, type: 'info', trackingId: 'viewed_thanks_info', title: 'Obrigado!', text: 'Não se trata do número na balança, mas de ser uma versão melhor.' },
+            { 
+                id: 42, 
+                type: 'select', 
+                question: 'Níveis de energia?', 
+                key: 'energy',
+                trackingId: 'answered_energy',
+                options: [
+                    { label: 'Muito baixo', value: 'very_low' },
+                    { label: 'Baixo', value: 'low' },
+                    { label: 'Moderado', value: 'moderate' },
+                    { label: 'Alto', value: 'high' }
+                ]
+            },
+            { 
+                id: 43, 
+                type: 'select', 
+                question: 'Tenho dificuldade para me movimentar?', 
+                key: 'mobility',
+                trackingId: 'answered_mobility',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { 
+                id: 44, 
+                type: 'select', 
+                question: 'Precisa de ajuda p/ atividades?', 
+                key: 'assistance',
+                trackingId: 'answered_assistance',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { 
+                id: 45, 
+                type: 'select', 
+                question: 'Sente falta de atividade que ama?', 
+                key: 'miss_activity',
+                trackingId: 'answered_miss_activity',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { id: 46, type: 'info_benefits', trackingId: 'viewed_benefits_list', title: 'A perda de peso melhora a saúde' },
+            { 
+                id: 47, 
+                type: 'select', 
+                question: '"Meu peso impacta minha autoestima"', 
+                key: 'agree_esteem',
+                trackingId: 'answered_agree_esteem',
+                options: [{ label: 'Concordo', value: 'agree' }, { label: 'Discordo', value: 'disagree' }]
+            },
+            { 
+                id: 48, 
+                type: 'select', 
+                question: '"Minha família está preocupada"', 
+                key: 'agree_family',
+                trackingId: 'answered_agree_family',
+                options: [{ label: 'Concordo', value: 'agree' }, { label: 'Discordo', value: 'disagree' }]
+            },
+            { 
+                id: 49, 
+                type: 'select', 
+                question: '"Estou extremamente motivado"', 
+                key: 'agree_motivated',
+                trackingId: 'answered_agree_motivated',
+                options: [{ label: 'Concordo', value: 'agree' }, { label: 'Discordo', value: 'disagree' }]
+            },
+            { id: 50, type: 'info', trackingId: 'viewed_motivation_boost', title: 'Legal!', text: 'Motivação é fundamental nos primeiros 3 meses para formar hábitos.' },
+            { 
+                id: 51, 
+                type: 'select', 
+                question: 'Pretende fazer dieta sozinho?', 
+                key: 'diet_alone',
+                trackingId: 'answered_diet_alone',
+                options: [{ label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]
+            },
+            { 
+                id: 52, 
+                type: 'info', 
+                trackingId: 'viewed_goal_reality',
+                title: 'Seus objetivos criam sua realidade', 
+                text: 'Mire alto e tenha orgulho de cada pequena conquista!' 
+            },
+            { 
+                id: 53, 
+                type: 'select', 
+                question: 'Objetivo além do peso?', 
+                key: 'goal_secondary',
+                trackingId: 'answered_goal_secondary',
+                options: [
+                    { label: 'Mais energia', value: 'energy' },
+                    { label: 'Saúde a longo prazo', value: 'health' },
+                    { label: 'Confiança', value: 'confidence' },
+                    { label: 'Aparência', value: 'appearance' }
+                ]
+            },
+            { id: 54, type: 'info', trackingId: 'viewed_face_change', title: 'Rosto muda!', text: 'Perder peso reduz volume nas bochechas e firma a mandíbula.' },
+            { 
+                id: 55, 
+                type: 'loading_complex', 
+                trackingId: 'viewed_final_loading', 
+                title: 'Preparando seu programa...' 
+            },
+            { id: 57, type: 'scratch_card', trackingId: 'scratch_revealed', title: 'Ganhe seu presente' },
+        ];
+
+        // --- ÍCONES ---
+        const Icon = ({ path, size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d={path} />
+            </svg>
+        );
+
+        const Icons = {
+            ChevronRight: (p) => <Icon path="m9 18 6-6-6-6" {...p} />,
+            ArrowLeft: (p) => <Icon path="m12 19-7-7 7-7 M19 12H5" {...p} />,
+            ArrowRight: (p) => <Icon path="M5 12h14M12 5l7 7-7 7" {...p} />,
+            Check: (p) => <Icon path="M20 6 9 17l-5-5" {...p} />,
+            Flame: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
+            Clock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            X: (p) => <Icon path="M18 6 6 18 M6 6l12 12" {...p} />,
+            ShieldCheck: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>,
+            Star: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill={p.fill||"none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+            Menu: (p) => <Icon path="M4 12h16M4 6h16M4 18h16" {...p} />,
+            Activity: (p) => <Icon path="M22 12h-4l-3 9L9 3l-3 9H2" {...p} />,
+            Sparkles: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+        };
+
+        // --- COMPONENTES AUXILIARES ---
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md' }) => {
+            const base = "w-full rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+            const sizes = { sm: "py-2 px-4 text-sm", md: "py-4 px-6 text-lg", lg: "py-5 px-8 text-xl" };
+            const variants = {
+                primary: "bg-teal-600 text-white hover:bg-teal-700 shadow-teal-200 border-b-4 border-teal-800",
+                success: "bg-green-600 text-white hover:bg-green-700 shadow-green-200 border-b-4 border-green-800",
+                secondary: "bg-white text-gray-700 border-2 border-gray-100 hover:border-teal-500 hover:text-teal-600",
+                outline: "bg-transparent border border-teal-600 text-teal-600 hover:bg-teal-50",
+                accent: "bg-orange-500 text-white hover:bg-orange-600 shadow-orange-200 border-b-4 border-orange-700",
+                ghost: "bg-transparent text-gray-500 hover:bg-gray-100 border-none shadow-none",
+                danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+            };
+            return <button onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>{children}</button>;
+        };
+
+        const ProgressBar = ({ current, total }) => {
+            const progress = Math.min(100, (current / total) * 100);
+            return <div className="w-full bg-gray-100 h-1.5 fixed top-14 left-0 z-20"><div className="h-full bg-teal-500 transition-all duration-300 ease-out" style={{ width: `${progress}%` }}></div></div>;
+        };
+
+        const Card = ({ children, className = '' }) => <div className={`bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden p-6 ${className}`}>{children}</div>;
+
+        // --- Gráfico SVG Simples (Substitui Recharts) ---
+        const SimpleChart = ({ data }) => {
+            if (!data || data.length === 0) return null;
+            const width = 100;
+            const height = 50;
+            const padding = 5;
+            
+            // Cálculos para o SVG
+            const getY = (w) => {
+                // Se não houver dados, retorna meio da altura
+                if(!w) return height/2;
+                // Normaliza entre min e max do gráfico para caber na altura
+                const allWeights = data.map(d => d.weight);
+                const min = Math.min(...allWeights);
+                const max = Math.max(...allWeights);
+                const range = max - min || 1;
+                return (height - padding) - ((w - min) / range) * (height - 2 * padding);
+            };
+            
+            const getX = (i) => padding + (i / (data.length - 1)) * (width - 2 * padding);
+
+            // Pontos da linha
+            const points = data.map((d, i) => `${getX(i)},${getY(d.weight)}`).join(' ');
+            
+            // Área abaixo da linha (para o gradiente)
+            const areaPoints = `${points} L${getX(data.length-1)},${height} L${getX(0)},${height} Z`;
+
+            return (
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible font-sans">
+                    <defs>
+                        <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#0d9488" stopOpacity="0.2" />
+                            <stop offset="100%" stopColor="#0d9488" stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    
+                    {/* Área preenchida */}
+                    <path d={areaPoints} fill="url(#gradient)" stroke="none" />
+                    
+                    {/* Linha do gráfico */}
+                    <polyline points={points} fill="none" stroke="#0d9488" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    
+                    {/* Pontos e Rótulos */}
+                    {data.map((d, i) => (
+                        <g key={i}>
+                            <circle cx={getX(i)} cy={getY(d.weight)} r="1.5" fill="#fff" stroke="#0d9488" strokeWidth="1" />
+                            {/* Data no eixo X (Omitida para simplificar visualmente, conforme solicitado) */}
+                            {/* <text x={getX(i)} y={height + 6} fontSize="4" textAnchor="middle" fill="#9ca3af">{d.name}</text> */}
+                            {/* Valor do peso acima do ponto */}
+                            <text x={getX(i)} y={getY(d.weight) - 4} fontSize="4" textAnchor="middle" fill="#0d9488" fontWeight="bold">{d.weight.toFixed(1)}kg</text>
+                            {/* Data acima do peso (para contexto) */}
+                            <text x={getX(i)} y={getY(d.weight) - 9} fontSize="3" textAnchor="middle" fill="#9ca3af">{d.name}</text>
+                        </g>
+                    ))}
+                </svg>
+            );
+        };
+
+        const LoadingComplexStep = ({ onComplete, trackInteraction }) => {
+          const [progress, setProgress] = useState(0);
+          const [step, setStep] = useState(0);
+          const [isComplete, setIsComplete] = useState(false);
+          
+          // INTEGRAÇÃO AI - Chamada silenciosa durante o loading
+          useEffect(() => {
+              if (progress === 10) { // Inicia cedo
+                 // Aqui você chamaria a função generateMetabolicInsight() se ela estivesse no escopo
+                 // Como ela está no componente pai, vamos simular ou passar via props se necessário
+                 // Para simplificar neste arquivo único, a lógica de IA está no pai e é disparada pelo step ID.
+              }
+          }, [progress]);
+
+          useEffect(() => {
+            if(progress >= 100) { 
+                setIsComplete(true);
+                return; 
+            }
+            const timer = setInterval(() => {
+                setProgress(p => {
+                    const next = p + 1;
+                    if(next === 30 && step === 0) { clearInterval(timer); return next; }
+                    if(next === 60 && step === 1) { clearInterval(timer); return next; }
+                    if(next === 85 && step === 2) { clearInterval(timer); return next; }
+                    return next;
+                });
+            }, 50);
+            return () => clearInterval(timer);
+          }, [progress, step]);
+
+          const handleContinue = (question, answer) => {
+             trackInteraction({ [question]: answer });
+             setStep(s => s + 1);
+             setProgress(p => p + 1);
+          };
+
+          return (
+             <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-4">
+               <div className="w-full max-w-xs mb-8">
+                  <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                      <span>{isComplete ? 'Tudo pronto!' : 'Personalizando...'}</span>
+                      <span>{progress}%</span>
+                  </div>
+                  <div className="h-4 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-teal-500 transition-all duration-75" style={{width: `${progress}%`}}></div></div>
+               </div>
+               {progress === 30 && step === 0 && (
+                   <div className="animate-fade-in bg-white p-6 rounded-2xl shadow-xl border border-gray-100 max-w-sm w-full">
+                     <h4 className="font-bold text-lg mb-4">Você sente dores nas costas?</h4>
+                     <div className="flex gap-2"><Button size="sm" onClick={() => handleContinue('dores_costas', 'Sim')}>Sim</Button><Button size="sm" variant="secondary" onClick={() => handleContinue('dores_costas', 'Não')}>Não</Button></div>
+                   </div>
+               )}
+               {progress === 60 && step === 1 && (
+                   <div className="animate-fade-in bg-white p-6 rounded-2xl shadow-xl border border-gray-100 max-w-sm w-full">
+                     <h4 className="font-bold text-lg mb-4">Você come emocionalmente?</h4>
+                     <div className="flex gap-2"><Button size="sm" onClick={() => handleContinue('comer_emocional', 'Sim')}>Sim</Button><Button size="sm" variant="secondary" onClick={() => handleContinue('comer_emocional', 'Não')}>Não</Button></div>
+                   </div>
+               )}
+               {!([30,60].includes(progress)) && !isComplete && <div className="text-gray-400 text-sm animate-pulse">Selecionando melhores estratégias...</div>}
+               
+               {isComplete && (
+                   <div className="animate-fade-in">
+                       <p className="text-gray-600 mb-6 font-medium">Análise concluída com sucesso!</p>
+                       <Button onClick={onComplete} variant="success" size="lg" className="animate-bounce shadow-green-300">Ver Meu Resultado</Button>
+                   </div>
+               )}
+             </div>
+          );
+        };
+
+        const ScratchCard = ({ onReveal }) => {
+            const canvasRef = useRef(null);
+            const revealedRef = useRef(false);
+            const [isRevealed, setIsRevealed] = useState(false);
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#cbd5e1'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#64748b'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('RASPE AQUI', 150, 75);
+                
+                let isDrawing = false;
+                const scratch = (x, y) => { ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(x, y, 20, 0, 2 * Math.PI); ctx.fill(); checkReveal(); };
+                const handleMove = (e) => { 
+                    if (!isDrawing) return;
+                    const rect = canvas.getBoundingClientRect(); 
+                    const x = (e.clientX || e.touches[0].clientX) - rect.left; 
+                    const y = (e.clientY || e.touches[0].clientY) - rect.top; 
+                    scratch(x, y); 
+                };
+                const checkReveal = () => { if (!revealedRef.current) { revealedRef.current = true; setTimeout(() => { setIsRevealed(true); onReveal(); }, 1000); }};
+                
+                const startDraw = () => isDrawing = true;
+                const endDraw = () => isDrawing = false;
+
+                canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('touchstart', startDraw);
+                window.addEventListener('mouseup', endDraw); window.addEventListener('touchend', endDraw);
+                canvas.addEventListener('mousemove', handleMove); canvas.addEventListener('touchmove', handleMove);
+
+                return () => {
+                    canvas.removeEventListener('mousedown', startDraw);
+                    canvas.removeEventListener('touchstart', startDraw);
+                    window.removeEventListener('mouseup', endDraw);
+                    window.removeEventListener('touchend', endDraw);
+                    canvas.removeEventListener('mousemove', handleMove);
+                    canvas.removeEventListener('touchmove', handleMove);
+                }
+            }, [onReveal]);
+
+            return (
+               <div className="relative w-[300px] h-[150px] mx-auto overflow-hidden rounded-xl shadow-inner bg-yellow-100 flex items-center justify-center">
+                  <div className={`absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-700 ${isRevealed ? 'opacity-100' : 'opacity-0'}`}><span className="text-4xl font-black text-red-600 animate-bounce">-42% OFF</span><span className="text-sm font-bold text-gray-700">DESCONTO APLICADO!</span></div>
+                  <canvas ref={canvasRef} width={300} height={150} className={`absolute inset-0 cursor-pointer touch-none ${isRevealed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`} />
+               </div>
+            );
+        };
+
+        // --- HELPER DE LIMPEZA DE DADOS ---
+        // Remove 'undefined' para evitar erro no Firebase
+        const cleanPayload = (obj) => {
+            const newObj = {};
+            Object.keys(obj).forEach(key => {
+                if (obj[key] !== undefined) {
+                    newObj[key] = obj[key];
+                }
+            });
+            return newObj;
+        };
+
+        // --- COMPONENTE PRINCIPAL APP ---
+        const App = () => {
+            const [stepIdx, setStepIdx] = useState(0);
+            const [answers, setAnswers] = useState({ 
+                name: '', email: '', gender: '', currentWeight: '', height: '', age: '', goalWeight: '', activityLevel: '', optin: false 
+                // Adicionei inicialização para evitar undefined, mas cleanPayload resolverá
+            });
+            const [showCheckout, setShowCheckout] = useState(false);
+            const [user, setUser] = useState(null);
+            const [sessionId, setSessionId] = useState("");
+            // Novo estado para controlar a exibição do botão final
+            const [showFinalButton, setShowFinalButton] = useState(false);
+            
+            // AI Analysis State
+            const [aiAnalysis, setAiAnalysis] = useState("");
+            const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+            const currentStep = INITIAL_FLOW[stepIdx];
+
+            // Inicialização Auth e Session
+            useEffect(() => {
+                const initAuth = async () => {
+                    let tokenSuccessful = false;
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        try {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                            tokenSuccessful = true;
+                        } catch (e) {
+                            console.warn("Token customizado inválido ou expirado. Tentando autenticação anônima.");
+                        }
+                    }
+                    if (!tokenSuccessful) {
+                        try { 
+                            await signInAnonymously(auth); 
+                            // Autenticado (Anônimo). Pronto para gravar.
+                        } catch (e) { 
+                            // Erro Auth
+                        }
+                    }
+                };
+                initAuth();
+                const unsub = onAuthStateChanged(auth, u => { 
+                    setUser(u);
+                });
+                setSessionId(Math.random().toString(36).substring(2, 15));
+                return () => unsub();
+            }, []);
+
+            // GEMINI INTEGRATION
+            const generateMetabolicInsight = async () => {
+                if (!apiKey) {
+                    // Fallback se sem chave
+                    setTimeout(() => setAiAnalysis("Sua análise metabólica indica um bloqueio por cortisol elevado. O plano foi ajustado para destravar seu metabolismo naturalmente e melhorar seu sono."), 1500);
+                    return;
+                }
+                
+                setIsGeneratingAI(true);
+                
+                const prompt = `Atue como um nutricionista especialista em cortisol. 
+                Analise este perfil:
+                Gênero: ${answers.gender}
+                Idade: ${answers.age}
+                Peso Atual: ${answers.currentWeight}kg
+                Meta: ${answers.goalWeight}kg
+                Sintomas: ${answers.symptoms ? answers.symptoms.join(', ') : 'Nenhum'}
+                
+                Gere um parágrafo curto (máximo 2 frases) e persuasivo, em tom empático e profissional, explicando por que o metabolismo dele pode estar travado devido ao cortisol e como um plano de detox ajudaria. Fale diretamente com o usuário ("Você..."). Use emojis. Responda em Português do Brasil.`;
+
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) {
+                        setAiAnalysis(text);
+                    } else {
+                         setAiAnalysis("Sua análise metabólica indica um bloqueio por cortisol. O plano foi ajustado para destravar seu metabolismo naturalmente.");
+                    }
+                } catch (error) {
+                    console.error("Erro Gemini:", error);
+                    setAiAnalysis("Sua análise metabólica indica um bloqueio por cortisol. O plano foi ajustado para destravar seu metabolismo naturalmente.");
+                } finally {
+                    setIsGeneratingAI(false);
+                }
+            };
+
+            // Trigger AI Generation at Loading Step
+            useEffect(() => {
+                // Step 55 is loading_complex. Let's find its index in case flow changes
+                const loadingStepIndex = INITIAL_FLOW.findIndex(s => s.id === 55);
+                if (stepIdx === loadingStepIndex && !aiAnalysis && !isGeneratingAI) {
+                    generateMetabolicInsight();
+                }
+            }, [stepIdx, aiAnalysis, isGeneratingAI, answers]);
+
+
+            // Resetar o botão final quando mudar de etapa
+            useEffect(() => {
+                if (currentStep.type !== 'scratch_card') {
+                     setShowFinalButton(false);
+                }
+            }, [stepIdx]);
+
+            // Helpers de Data
+            const today = new Date();
+            const getShortDate = (add) => { const d = new Date(today); d.setMonth(d.getMonth() + add); return d.toLocaleDateString('pt-BR', {month:'short'}).replace('.',''); };
+            const getFutureDate = (add) => { const d = new Date(today); d.setDate(d.getDate() + add); return d.toLocaleDateString('pt-BR', {day:'numeric', month:'long'}); };
+
+            // --- FUNÇÃO DE INTEGRAÇÃO EXTERNA ---
+            const sendToExternalPanel = (data) => {
+                if (typeof window.enviarResultadoQuiz === 'function') {
+                    window.enviarResultadoQuiz(
+                        data.name || 'Visitante',
+                        data.email,
+                        `IMC: ${calculateIMC()} - Meta: ${data.goalWeight}kg`
+                    );
+                }
+            };
+
+            // FUNÇÃO PARA SALVAR PARCIALMENTE (SEM AVANÇAR ETAPA)
+            // Útil para capturar interações "no meio do caminho" (ex: sub-passos de loading)
+            const handlePartialSave = async (dataToSave = {}) => {
+                 const newAnswers = { ...answers, ...dataToSave };
+                 setAnswers(newAnswers);
+
+                 if (user) {
+                    try {
+                        const leadDocRef = doc(db, "quiz_leads", sessionId);
+                        let payload = { 
+                            ...newAnswers,
+                            sessionId: sessionId,
+                            userId: user.uid,
+                            lastStep: stepIdx,
+                            updatedAt: serverTimestamp() 
+                        };
+                        payload = cleanPayload(payload);
+                        if(stepIdx === 0) payload.status = 'started';
+                        if(stepIdx > 5) payload.status = 'engaged';
+                        if(dataToSave.email && dataToSave.email.includes('@')) {
+                             payload.status = 'lead';
+                        }
+                        await setDoc(leadDocRef, payload, { merge: true });
+                        
+                        const backupRef = doc(db, "artifacts", appId, "users", user.uid, "quiz_sessions", sessionId);
+                        await setDoc(backupRef, payload, { merge: true });
+
+                    } catch(e) { 
+                        // Erro silencioso
+                    }
+                }
+            };
+
+            // FUNÇÃO INTELIGENTE DE SALVAR E AVANÇAR
+            const handleSaveAndNext = async (dataToSave = {}) => {
+                // Aguarda o usuário estar autenticado se for o primeiro passo
+                if (stepIdx === 0 && !user) {
+                    return; // Bloqueia avanço até autenticar
+                }
+
+                const newAnswers = { ...answers, ...dataToSave };
+                setAnswers(newAnswers); // Atualiza estado local
+
+                if (user) {
+                    try {
+                        const leadDocRef = doc(db, "quiz_leads", sessionId);
+                        
+                        // LIMPEZA: Remove campos undefined antes de enviar
+                        let payload = { 
+                            ...newAnswers,
+                            sessionId: sessionId,
+                            userId: user.uid,
+                            lastStep: stepIdx,
+                            updatedAt: serverTimestamp() 
+                        };
+                        payload = cleanPayload(payload);
+                        
+                        if(stepIdx === 0) payload.status = 'started';
+                        if(stepIdx > 5) payload.status = 'engaged';
+                        
+                        if(dataToSave.email && dataToSave.email.includes('@')) {
+                             payload.status = 'lead';
+                             sendToExternalPanel(newAnswers);
+                        }
+
+                        await setDoc(leadDocRef, payload, { merge: true });
+                        
+                        const backupRef = doc(db, "artifacts", appId, "users", user.uid, "quiz_sessions", sessionId);
+                        await setDoc(backupRef, payload, { merge: true });
+
+                    } catch(e) { 
+                       // Erro silencioso
+                    }
+                }
+
+                // 3. Avança etapa
+                nextStep();
+            };
+
+            // Wrapper para respostas simples (botões)
+            const handleAnswer = (key, value) => {
+                handleSaveAndNext({ [key]: value });
+            };
+
+            const nextStep = () => {
+                if(stepIdx < INITIAL_FLOW.length - 1) {
+                    setStepIdx(prev => prev + 1);
+                    window.scrollTo(0,0);
+                }
+            };
+
+            const calculateIMC = () => {
+                const h = parseFloat(answers.height) / 100;
+                const w = parseFloat(answers.currentWeight);
+                if (!h || !w) return 0;
+                return (w / (h * h)).toFixed(1);
+            };
+
+            const getIMCStatus = () => {
+                const imc = calculateIMC();
+                if (imc < 18.5) return { text: "Abaixo do Peso", color: "text-blue-500" };
+                if (imc < 25) return { text: "Saudável", color: "text-green-500" };
+                if (imc < 30) return { text: "Sobrepeso", color: "text-orange-500" };
+                return { text: "Obesidade", color: "text-red-500" };
+            };
+
+            const calculateHealthyWeight = () => {
+                // Calcula peso para IMC 23 (meio da faixa saudável)
+                const h = parseFloat(answers.height) / 100;
+                if (!h) return 60;
+                return (23 * h * h).toFixed(1);
+            };
+
+            const getWeightedLossData = () => {
+                // Nova Lógica de Distribuição Realista: 33% (Mês 1) -> 50% acumulado (Mês 2) -> 100% (Mês 3)
+                const current = parseFloat(answers.currentWeight) || 0;
+                const goal = parseFloat(answers.goalWeight) || (current * 0.88);
+                const totalLoss = current - goal;
+                
+                return [
+                    { name: 'Hoje', weight: current },
+                    { name: getShortDate(1), weight: current - (totalLoss * 0.33) }, // 33% da perda no mês 1
+                    { name: getShortDate(2), weight: current - (totalLoss * 0.66) }, // +33% (acumulando 66%) no mês 2
+                    { name: getShortDate(3), weight: goal } // 100% da perda (meta) no mês 3
+                ];
+            };
+
+            // FUNÇÃO ATUALIZADA PARA REDIRECIONAR APÓS SCRATCH
+            const handleRedirectToSalesPage = () => {
+                // Salva o status final no banco antes de redirecionar
+                if(user) {
+                    const ref = doc(db, "quiz_leads", sessionId);
+                    setDoc(ref, { status: 'sales_page_viewed', updatedAt: serverTimestamp() }, { merge: true });
+                }
+                
+                // Redirecionamento real para a página externa
+                window.location.href = EXTERNAL_CHECKOUT_URL;
+            };
+
+            // RENDERIZAÇÃO DA ÚLTIMA ETAPA (SCRATCH CARD) COM BOTÃO DE REDIRECIONAMENTO
+            if (currentStep.type === 'scratch_card') {
+                return (
+                    <div className="min-h-screen bg-white flex flex-col font-sans text-gray-800 items-center justify-center p-6">
+                        <div className="text-center animate-fade-in w-full max-w-md">
+                            <h2 className="text-3xl font-black text-gray-900 mb-2">🎁 Presente!</h2>
+                            <p className="text-gray-600 mb-6">Raspe abaixo para revelar seu desconto exclusivo.</p>
+                            
+                            <ScratchCard onReveal={() => {
+                                // Adiciona um pequeno delay visual antes de mostrar o botão
+                                setTimeout(() => {
+                                    setShowFinalButton(true);
+                                    // Opcional: Auto-scroll para o botão se necessário
+                                }, 1500);
+                            }} />
+                            
+                            {/* O botão só aparece SE showFinalButton for true */}
+                            {showFinalButton && (
+                             <div className="mt-8 animate-fade-in-up">
+                                <p className="text-sm text-gray-400 mb-4">Seu plano foi gerado com sucesso!</p>
+                                <Button onClick={handleRedirectToSalesPage} variant="success" size="lg" className="animate-bounce shadow-green-300 w-full">
+                                    VER MEU PLANO E DESCONTO <Icons.ChevronRight />
+                                </Button>
+                             </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // RENDERIZAÇÃO DO QUIZ
+            return (
+                <div className="min-h-screen bg-white flex flex-col font-sans text-gray-800">
+                    <header className="h-14 flex items-center justify-between px-4 border-b border-gray-100 bg-white sticky top-0 z-30">
+                        {stepIdx > 0 ? <button onClick={() => setStepIdx(p => p - 1)} className="p-2 -ml-2 text-gray-400 hover:text-teal-600"><Icons.ArrowLeft size={24} /></button> : <div className="w-8"></div>}
+                        <div className="font-black text-lg tracking-tighter text-teal-600">RESET DO <span className="text-gray-800 font-normal">CORTISOL</span></div>
+                        <div className="w-8 text-right"><Icons.Menu size={24} className="text-gray-300 ml-auto" /></div>
+                    </header>
+                    <ProgressBar current={stepIdx + 1} total={INITIAL_FLOW.length} />
+                    <main className="flex-1 w-full max-w-md mx-auto p-6 pt-8 pb-12 flex flex-col">
+                        {currentStep.question && <h1 className="text-2xl font-bold text-gray-800 mb-6 leading-tight animate-fade-in">{currentStep.question}</h1>}
+                        
+                        {/* RENDERERS DE PASSOS */}
+                        {currentStep.type === 'intro' && (
+                            <div className="animate-fade-in text-center flex flex-col items-center">
+                                <div className="w-24 h-24 bg-teal-100 rounded-full flex items-center justify-center mb-6 shadow-inner"><Icons.Flame size={40} className="text-teal-600" fill="currentColor" fillOpacity={0.2} /></div>
+                                <h1 className="text-3xl font-black text-gray-900 mb-3 leading-tight tracking-tight">{currentStep.title}</h1>
+                                <p className="text-gray-600 mb-8 max-w-xs mx-auto text-lg leading-relaxed">{currentStep.subtitle}</p>
+                                <div className="space-y-3 w-full mb-10 text-left max-w-xs mx-auto">{currentStep.bullets.map((txt, i) => (<div key={i} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm"><div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0"><Icons.Check size={14} className="text-green-700" strokeWidth={3} /></div><span className="text-sm font-bold text-gray-700">{txt}</span></div>))}</div>
+                                <Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'start'})} variant="success" size="lg" className="animate-pulse shadow-green-300" disabled={!user}>
+                                    {user ? <> {currentStep.buttonText} <Icons.ChevronRight size={24} /> </> : "Carregando..."}
+                                </Button>
+                                <p className="text-[10px] uppercase font-bold tracking-widest text-gray-300 mt-6">Análise Gratuita • Seguro • Rápido</p>
+                            </div>
+                        )}
+                        
+                        {currentStep.type === 'select' && <div className="space-y-3 animate-fade-in-up">{currentStep.options.map(opt => {
+                            const label = typeof opt === 'string' ? opt : opt.label;
+                            const val = typeof opt === 'string' ? opt : opt.value;
+                            const desc = typeof opt === 'object' && opt.desc ? opt.desc : null;
+                            return (
+                                <Button key={val} variant="secondary" onClick={() => handleAnswer(currentStep.key, val)} className="justify-between text-left group flex-col items-start gap-1 h-auto py-3">
+                                    <div className="flex justify-between w-full items-center">
+                                        <span className="font-bold">{label}</span>
+                                        <Icons.ChevronRight className="opacity-0 group-hover:opacity-100 transition-opacity text-teal-500" />
+                                    </div>
+                                    {desc && <span className="text-xs text-gray-400 font-normal">{desc}</span>}
+                                </Button>
+                            );
+                        })}</div>}
+                        
+                        {/* INPUT SIMPLES AGORA SALVA NO CLIQUE DO BOTÃO */}
+                        {currentStep.type === 'input' && <div className="animate-fade-in-up"><input type={currentStep.subtype || 'text'} placeholder={currentStep.placeholder} className="w-full text-center text-3xl p-4 border-b-2 border-teal-500 focus:outline-none bg-transparent mb-8 font-bold text-gray-700" value={answers[currentStep.key] || ''} onChange={(e) => {setAnswers(prev => ({...prev, [currentStep.key]: e.target.value})); handlePartialSave({[currentStep.key]: e.target.value});}} onBlur={(e) => handlePartialSave({[currentStep.key]: e.target.value})} autoFocus /><Button onClick={() => handleSaveAndNext({[currentStep.key]: answers[currentStep.key]})} disabled={!answers[currentStep.key]}>Próximo</Button></div>}
+                        
+                        {/* --- NOVA RENDERIZAÇÃO DA META DE PESO (COMPLEX_GOAL) --- */}
+                        {currentStep.type === 'complex_goal' && <div className="animate-fade-in-up space-y-6">
+                            {/* Manual Selection (Primary) */}
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                <label className="block text-sm font-bold text-gray-700 mb-4 text-center">Defina sua meta de peso:</label>
+                                <div className="flex justify-center items-baseline gap-2 mb-6">
+                                    <input 
+                                        type="number" 
+                                        placeholder="00.0" 
+                                        className="w-32 text-center text-5xl font-black text-teal-600 border-b-4 border-teal-100 focus:border-teal-500 focus:outline-none bg-transparent placeholder-gray-200 transition-colors" 
+                                        value={answers.goalWeight || ''}
+                                        onChange={(e) => setAnswers(prev => ({...prev, goalWeight: e.target.value}))} 
+                                        autoFocus
+                                    />
+                                    <span className="text-xl font-bold text-gray-400">kg</span>
+                                </div>
+                                <Button 
+                                    onClick={() => handleSaveAndNext({goalWeight: answers.goalWeight})} 
+                                    disabled={!answers.goalWeight}
+                                    className="w-full"
+                                >
+                                    Confirmar Meta
+                                </Button>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <div className="h-px bg-gray-200 flex-1"></div>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">OU</span>
+                                <div className="h-px bg-gray-200 flex-1"></div>
+                            </div>
+
+                            {/* AI Recommendation (Secondary) */}
+                            <div className="bg-orange-50 border border-orange-100 p-5 rounded-2xl relative overflow-hidden">
+                                <div className="absolute top-0 right-0 bg-orange-200 text-orange-800 text-[10px] font-bold px-2 py-1 rounded-bl-lg">SUGESTÃO IA</div>
+                                <div className="flex gap-4 items-center mb-4">
+                                    <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
+                                        <Icons.Flame size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 leading-tight">Desafio Metabólico</h3>
+                                        <p className="text-xs text-gray-500">Baseado no seu IMC ideal</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center justify-between bg-white/60 rounded-xl p-3 border border-orange-100 mb-4">
+                                   <div className="text-center">
+                                     <div className="text-[10px] text-gray-400 uppercase font-bold">Atual</div>
+                                     <div className="font-bold text-gray-500 line-through text-lg">{answers.currentWeight}</div>
+                                   </div>
+                                   <Icons.ArrowRight className="text-orange-300" size={16} />
+                                   <div className="text-center">
+                                     <div className="text-[10px] text-orange-500 uppercase font-bold">Meta</div>
+                                     <div className="font-black text-gray-800 text-2xl">{calculateHealthyWeight()}<span className="text-xs font-normal text-gray-500 ml-1">kg</span></div>
+                                   </div>
+                                </div>
+
+                                <Button 
+                                    onClick={() => handleAnswer('goalWeight', calculateHealthyWeight())} 
+                                    className="w-full bg-orange-500 hover:bg-orange-600 text-white border-none shadow-orange-200"
+                                >
+                                    Aceitar Desafio
+                                </Button>
+                            </div>
+                        </div>}
+
+                        {currentStep.type === 'info_result' && <div className="animate-fade-in-up text-center"><div className="mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><div className="text-4xl font-bold text-teal-600 mb-2">{calculateIMC()}</div><div className={`text-lg font-bold mb-4 ${getIMCStatus().color}`}>{getIMCStatus().text}</div><div className="flex justify-between text-xs text-gray-500 mb-2"><span>Magreza</span><span className="font-bold text-green-600">Saudável (18.5-24.9)</span><span className="text-red-500">Obesidade</span></div><div className="h-4 bg-gradient-to-r from-blue-300 via-green-400 to-red-400 rounded-full relative"><div className="absolute top-[-5px] w-1 h-6 bg-black border-2 border-white" style={{ left: `${Math.min(100, Math.max(0, (calculateIMC()/40)*100))}%` }} /></div><p className="mt-4 text-left text-sm text-gray-600">Alcançar e manter um IMC saudável reduz o risco de doenças cardíacas, pressão alta e diabetes tipo 2.</p></div><Button onClick={() => handleSaveAndNext({action: 'viewed_result'})}>Entendi, Próximo</Button></div>}
+                        
+                        {currentStep.type === 'profile_summary' && <div className="animate-fade-in-up"><Card className="mb-6 space-y-4"><div className="flex justify-between items-center border-b pb-2"><span className="text-gray-500">IMC Ideal</span><span className="font-bold text-green-600">21.5</span></div><div className="flex justify-between items-center border-b pb-2"><span className="text-gray-500">Seu IMC</span><span className={`font-bold ${getIMCStatus().color}`}>{calculateIMC()}</span></div><div className="flex justify-between items-center border-b pb-2"><span className="text-gray-500">Objetivo</span><span className="font-bold text-teal-600">Perder {(answers.currentWeight - (answers.goalWeight || 60)).toFixed(1)} kg</span></div><div className="bg-red-50 p-4 rounded-lg mt-4"><h4 className="font-bold text-red-700 flex items-center gap-2"><Icons.Activity size={16}/> Riscos de um IMC pouco saudável</h4><p className="text-xs text-red-600 mt-2">Pressão alta, doenças cardíacas, diabetes tipo 2, osteoartrite, certos tipos de câncer, depressão e ansiedade.</p><p className="text-xs text-gray-500 mt-2 border-t border-red-100 pt-2">O NIH recomenda manter um IMC entre 18,5 e 24,9 para se manter dentro de uma faixa saudável.</p></div></Card><p className="text-center text-sm text-gray-500 mb-6">Seu corpo está em forma recuperável, mas exige ação imediata.</p><Button onClick={() => handleSaveAndNext({action: 'viewed_profile'})}>Continuar</Button></div>}
+
+                        {currentStep.type === 'info' && <div className="animate-fade-in-up text-center"><div className="mb-6 rounded-xl overflow-hidden shadow-md border border-gray-100">{currentStep.image && (<img src={currentStep.image} alt="Imagem de apoio" className="w-full h-auto object-cover" />)}</div><p className="text-xl text-gray-700 leading-relaxed mb-8">{currentStep.text}</p><Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_info'})}>Próximo</Button></div>}
+                        
+                        {currentStep.type === 'interstitial' && <div className="animate-fade-in-up text-center"><p className="text-xl text-gray-700 leading-relaxed mb-8">{currentStep.text}</p><Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_interstitial'})}>Próximo</Button></div>}
+
+                        {currentStep.type === 'testimonial' && <div className="animate-fade-in-up text-center"><div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-inner">{currentStep.image}</div><div className="flex justify-center gap-1 text-yellow-400 mb-4">{[1,2,3,4,5].map(i => <Icons.Star key={i} fill="currentColor" size={20} />)}</div><h3 className="text-xl font-bold text-gray-900 mb-2">{currentStep.name} perdeu peso!</h3><p className="text-gray-600 italic text-lg mb-6">"{currentStep.text}"</p><div className="bg-teal-50 text-teal-800 px-4 py-2 rounded-lg font-bold text-sm mb-6 inline-block">Verificado ✅</div><p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-8">{currentStep.location}</p><Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_testimonial'})}>Ver se funciona pra mim</Button></div>}
+                        
+                        {currentStep.type === 'prediction_v1' && <div className="animate-fade-in-up"><h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Com base nas suas respostas, {answers.name || 'Usuário'}...</h2><p className="text-center text-gray-600 mb-6">Prevemos que você atingirá <span className="font-bold text-teal-600 text-xl">{answers.goalWeight || 60} kg</span> até <span className="font-bold text-teal-600 text-xl">{getFutureDate(90)}</span></p><div className="h-60 w-full mb-6 text-center"><SimpleChart data={getWeightedLossData()} /></div><Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_prediction'})} variant="success">Continuar minha jornada</Button><p className="text-[10px] text-center text-gray-400 mt-4">A previsão baseia-se em membros similares, não é garantia.</p></div>}
+                        
+                        {currentStep.type === 'loading_complex' && <LoadingComplexStep onComplete={() => handleSaveAndNext({action: 'loading_complete'})} trackInteraction={handlePartialSave} />}
+                        
+                        {currentStep.type === 'scratch_card' && <div className="text-center animate-fade-in"><h2 className="text-2xl font-bold mb-4">🎁 Presente!</h2><ScratchCard onReveal={() => setTimeout(() => {
+                            // Delay para mostrar o botão após a raspadinha
+                            setShowFinalButton(true);
+                        }, 1500)} />
+                            
+                            {/* BOTÃO QUE APARECE APÓS RASPAR E REDIRECIONA PARA A PÁGINA EXTERNA */}
+                            {showFinalButton && (
+                             <div className="mt-8 animate-fade-in-up">
+                                <p className="text-sm text-gray-400 mb-4">Seu plano foi gerado com sucesso!</p>
+                                <Button onClick={handleRedirectToSalesPage} variant="success" size="lg" className="animate-bounce shadow-green-300 w-full">
+                                    VER MEU PLANO E DESCONTO <Icons.ChevronRight />
+                                </Button>
+                             </div>
+                            )}
+                        </div>}
+                        
+                        {currentStep.type === 'multiselect' && <div className="space-y-4 animate-fade-in-up"><div className="grid grid-cols-2 gap-3">{currentStep.options.map(opt => {
+                            const label = typeof opt === 'string' ? opt : opt.label;
+                            const val = typeof opt === 'string' ? opt : opt.value;
+                            return (
+                                <div key={val} onClick={() => { const sel = answers[currentStep.key] || []; const newSel = sel.includes(val) ? sel.filter(x => x !== val) : [...sel, val]; setAnswers(prev => ({ ...prev, [currentStep.key]: newSel })); handlePartialSave({[currentStep.key]: newSel}); }} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${(answers[currentStep.key] || []).includes(val) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-100 bg-white hover:border-teal-200'}`}>{label}</div>
+                            );
+                        })}</div><Button onClick={() => handleSaveAndNext({[currentStep.key]: answers[currentStep.key] || []})}>Continuar</Button></div>}
+                        
+                        {/* CHECKBOX AGORA SALVA NO CLIQUE DO BOTÃO */}
+                        {currentStep.type === 'checkbox' && <div className="animate-fade-in-up"><label className="flex items-center gap-4 p-4 border rounded-xl cursor-pointer hover:bg-gray-50 mb-6 bg-white shadow-sm"><input type="checkbox" className="w-6 h-6 text-teal-600 rounded focus:ring-teal-500" checked={answers[currentStep.key] === true} onChange={(e) => {setAnswers(prev => ({ ...prev, [currentStep.key]: e.target.checked })); handlePartialSave({[currentStep.key]: e.target.checked});}} /><span className="text-lg text-gray-700">{currentStep.label}</span></label><Button onClick={() => handleSaveAndNext({[currentStep.key]: answers[currentStep.key]})}>Continuar</Button></div>}
+                        
+                        {/* RENDERERS ADICIONAIS FALTANTES (prediction_v2, info_benefits, success_summary) */}
+                        
+                        {currentStep.type === 'prediction_v2' && (
+                            <div className="animate-fade-in-up">
+                                <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Previsão Detalhada</h2>
+                                <p className="text-center text-gray-600 mb-6">Veja como será sua jornada até {getFutureDate(90)}.</p>
+                                <div className="h-60 w-full mb-6 text-center">
+                                    <SimpleChart data={getWeightedLossData()} />
+                                </div>
+                                <Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_prediction_v2'})} variant="success">Continuar</Button>
+                            </div>
+                        )}
+
+                        {currentStep.type === 'info_benefits' && (
+                            <div className="animate-fade-in-up">
+                                <h2 className="text-2xl font-bold mb-6 text-center">Benefícios Reais</h2>
+                                <div className="grid grid-cols-2 gap-4 mb-8">
+                                    {[{ icon: '🏃', title: 'Mobilidade', text: 'Melhora saúde articular' }, { icon: '🫀', title: 'Coração', text: 'Melhora saúde cardiovascular' }, { icon: '🔋', title: 'Energia', text: 'Aumento da qualidade de vida' }, { icon: '🍰', title: 'Controle', text: 'Melhor controle da glicemia' }].map((b, i) => (
+                                        <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                            <div className="text-3xl mb-2">{b.icon}</div>
+                                            <h4 className="font-bold text-sm text-gray-800">{b.title}</h4>
+                                            <p className="text-xs text-gray-500">{b.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_benefits'})}>Isso é o que eu quero</Button>
+                            </div>
+                        )}
+
+                        {currentStep.type === 'success_summary' && (
+                            <div className="animate-fade-in-up text-center">
+                                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6"><Icons.Check size={48} strokeWidth={4} /></div>
+                                <h2 className="text-3xl font-black text-gray-900 mb-2">Tudo Pronto!</h2>
+                                <p className="text-gray-600 mb-8">Seu plano de desintoxicação de cortisol está 100% calculado e pronto para acesso.</p>
+                                <Card className="mb-6 bg-teal-50 border-teal-100">
+                                    <div className="flex justify-between items-end border-b border-teal-200 pb-2 mb-2">
+                                        <span className="text-sm text-teal-800">Meta Final</span>
+                                        <span className="text-2xl font-bold text-teal-700">{answers.goalWeight} kg</span>
+                                    </div>
+                                    <p className="text-xs text-left text-teal-600">Baseado no protocolo de 12 semanas.</p>
+                                </Card>
+                                <Button onClick={() => handleSaveAndNext({action: currentStep.trackingId || 'viewed_success'})} variant="accent" size="lg" className="animate-bounce">Ver Meu Plano</Button>
+                            </div>
+                        )}
+
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+
+</body></html>
